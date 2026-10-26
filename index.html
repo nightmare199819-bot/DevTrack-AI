@@ -294,7 +294,7 @@ function render(){ensureDailySchedule(today());renderOverview();renderTasks();re
  if($('classStart'))$('classStart').value=data.settings.classStart||'07:00';
  if($('classEnd'))$('classEnd').value=data.settings.classEnd||'20:00';
  document.querySelectorAll('[data-class-day]').forEach(el=>{el.checked=(data.settings.classDays||[1,2,3,4,5]).includes(Number(el.dataset.classDay))});
- renderLeetCodeStatus();renderLearningProgress();renderRoadmap();
+ renderLeetCodeStatus();renderLearningProgress();renderRoadmap();renderRoadmap();
 }
 function exportData(){let blob=new Blob([JSON.stringify({app:'DevTrack AI',version:1,exportedAt:new Date().toISOString(),data},null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='devtrack-ai-backup-'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
 function importData(file){let r=new FileReader();r.onload=()=>{try{let o=JSON.parse(r.result),d=o.data||o;if(!Array.isArray(d.tasks)||!Array.isArray(d.leetcode)||!Array.isArray(d.reviews)||!d.settings)throw Error('Backup format not recognized');if(confirm('Replace current local data with the imported backup?')){data=d;normalizeData();save();alert('Backup imported.')}}catch(e){alert('Could not import this file: '+e.message)}};r.readAsText(file)}
