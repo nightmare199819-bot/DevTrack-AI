@@ -56,7 +56,8 @@ export default {
     const corsHeaders = cors(origin);
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-    if (request.method !== "POST" || (url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname) !== "/roadmap") {
+    const route = url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+    if (request.method !== "POST" || !["/roadmap", "/chat"].includes(route)) {
       return json({ error: "Use POST /roadmap from DevTrack AI." }, 405, corsHeaders);
     }
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
@@ -66,7 +67,65 @@ export default {
     if (length > 12000) return json({ error: "Request is too large." }, 413, corsHeaders);
 
     let input;
-    try { input = await request.json(); } catch { return json({ error: "Request body must be valid JSON." }, 400, corsHeaders); }
+    try {
+      const rawBody = await request.text();
+      if (new TextEncoder().encode(rawBody).length > 16000) return json({ error: "Request is too large." }, 413, corsHeaders);
+      input = JSON.parse(rawBody);
+    } catch { return json({ error: "Request body must be valid JSON." }, 400, corsHeaders); }
+
+    if (route === "/chat") {
+      const messages = (Array.isArray(input.messages) ? input.messages : [])
+        .filter(m => m && ["user", "assistant"].includes(m.role) && typeof m.content === "string")
+        .slice(-14)
+        .map(m => ({ role: m.role, content: m.content.trim().slice(0, 2000) }))
+        .filter(m => m.content);
+      while (messages.length && messages[0].role !== "user") messages.shift();
+      if (!messages.length || messages[messages.length - 1].role !== "user") {
+        return json({ error: "Send a message to start the conversation." }, 400, corsHeaders);
+      }
+      if (messages.reduce((sum, m) => sum + m.content.length, 0) > 12000) {
+        return json({ error: "This conversation is too long. Start a new chat and try again." }, 413, corsHeaders);
+      }
+
+      const catalogue = RESOURCES.map(r => ({ id: r.id, title: r.title, url: r.url, topics: r.topics }));
+      const system = [
+        "You are DevTrack AI, a patient, practical study coach. Chat naturally and answer follow-up questions using the conversation.",
+        "Explain concepts clearly at the learner's level. Help with course planning, study sessions, debugging concepts, practice questions, and learning roadmaps.",
+        "When asked for a roadmap, give an ordered, realistic plan that fits the learner's available time if supplied. Do not claim that a plan is saved or tasks are checked off.",
+        "Use only free learning resources from the supplied catalogue. Select resource IDs that are genuinely useful; never invent or output URLs. A resource link is provided separately by the app.",
+        "For requests outside learning, briefly explain your focus and offer a related way to help. Keep answers friendly and easy to scan.",
+        "Return JSON with exactly: answer (string) and resourceIds (array of catalogue IDs, at most 4).",
+        "Resource catalogue: " + JSON.stringify(catalogue)
+      ].join("\n");
+
+      try {
+        const upstream = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + MODEL + ":generateContent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+            generationConfig: { responseMimeType: "application/json", temperature: 0.45, maxOutputTokens: 1800 }
+          })
+        });
+        const result = await upstream.json();
+        if (!upstream.ok) {
+          return json({ error: upstream.status === 429 ? "The free AI quota is temporarily busy. Try again in a minute." : "The AI service could not answer this message." }, upstream.status === 429 ? 429 : 502, corsHeaders);
+        }
+        const text = result.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
+        const generated = JSON.parse(text);
+        const byId = new Map(RESOURCES.map(resource => [resource.id, resource]));
+        const answer = String(generated.answer || "").trim().slice(0, 6000);
+        const resources = (Array.isArray(generated.resourceIds) ? generated.resourceIds : []).slice(0, 4)
+          .map(id => byId.get(String(id))).filter(Boolean)
+          .map(r => ({ title: r.title, url: r.url }));
+        if (!answer) return json({ error: "The AI returned an empty answer. Try asking another way." }, 502, corsHeaders);
+        return json({ answer, resources }, 200, corsHeaders);
+      } catch {
+        return json({ error: "The AI service is unavailable or returned an invalid reply. Try again later." }, 502, corsHeaders);
+      }
+    }
+
     const goal = String(input.goal || "").trim().slice(0, 160);
     const level = String(input.level || "Beginner").slice(0, 40);
     const language = String(input.language || "Hindi or English").trim().slice(0, 50);
