@@ -42,6 +42,7 @@ const defaults=()=>({tasks:[{id:crypto.randomUUID(),title:'Full-stack learning â
 let data;try{data=JSON.parse(localStorage.getItem('devtrack-ai-v1'))||defaults()}catch{data=defaults()}
 function normalizeData(){if(!data.settings||typeof data.settings!=='object')data.settings=defaults().settings;if(!data.settings.classStart)data.settings.classStart='07:00';if(!data.settings.classEnd)data.settings.classEnd='20:00';if(!Array.isArray(data.settings.classDays))data.settings.classDays=[1,2,3,4,5]}
 normalizeData();
+if(Array.isArray(data.notifications))data.notifications.forEach(n=>{if(n.message)n.message=n.message.replace(/synced into your cycle/gi,'synced into your progress history')});
 if(!data.roadmap||!Array.isArray(data.roadmap.steps))data.roadmap=null;if(!data.settings.aiEndpoint)data.settings.aiEndpoint='';
 let selectedDate=today(),calendarMonth=new Date(today()+'T12:00:00'),viewHistory=[],currentTab='overview';
 function save(){localStorage.setItem('devtrack-ai-v1',JSON.stringify(data));render()}
