@@ -1,10 +1,10 @@
 # DevTrack AI learning coach connection
 
-This folder contains the small private-key proxy used by the AI Roadmap page. It keeps the Gemini API key in a Cloudflare Worker secret. The key is never placed in `index.html`, the public GitHub repository, or browser storage.
+This folder contains the small private-key proxy used by the learning-coach chat in the AI Roadmap page. It keeps the Gemini API key in a Cloudflare Worker secret. The key is never placed in `index.html`, the public GitHub repository, or browser storage.
 
 ## Free setup
 
-The connection uses Gemini's free API tier and the Cloudflare Workers Free plan. Free quotas have limits and can change. The Gemini free tier currently says submitted content may be used to improve Google's products, so enter learning goals and preferences only; the page does not send your timetable, task history, LeetCode profile, or local notes. Do not link a billing account to the Google AI Studio project if you want to keep this connection on the no-cost tier.
+The connection uses Gemini's free API tier and the Cloudflare Workers Free plan. Free quotas have limits and can change. The Gemini free tier currently says submitted content may be used to improve Google's products, so use it only for learning questions you are comfortable sending to Google; the chat does not send your timetable, task history, LeetCode profile, or local notes. Do not link a billing account to the Google AI Studio project if you want to keep this connection on the no-cost tier.
 
 Official details: [Gemini API free tier and data terms](https://ai.google.dev/gemini-api/docs/pricing), [Gemini billing tiers](https://ai.google.dev/gemini-api/docs/billing), [Cloudflare Workers Free plan](https://developers.cloudflare.com/workers/platform/pricing/), [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
 
@@ -23,9 +23,9 @@ Official details: [Gemini API free tier and data terms](https://ai.google.dev/ge
    ```
 5. Copy the Worker URL that Cloudflare shows, usually `https://devtrack-ai-learning-coach.<your-subdomain>.workers.dev`.
 6. Open DevTrack AI → Settings & data. Paste the Worker URL into **Secure AI Worker URL** and save.
-7. Open **AI roadmap**, enter a goal, level, weekly hours, and preferred teaching language, then create a roadmap.
+7. Open **AI roadmap** and chat with the learning coach. Ask questions, request explanations, or ask for a course roadmap. Generated roadmaps appear below the conversation with checkboxes and curated learning links.
 
-The Worker serves only `POST /roadmap` for the DevTrack Pages origin. It applies a small per-IP request limit, accepts only short learning-goal inputs, and maps the model's resource choices to a built-in list of direct lesson and playlist links. The rate limit is best-effort because free Workers run in multiple isolates. The Gemini key remains only in the Worker secret store.
+The Worker serves `POST /chat` and the legacy `POST /roadmap` only for the DevTrack Pages origin. It limits request size, keeps a small recent conversation context, applies a per-IP request limit, and maps the model's resource choices to a built-in list of direct lesson and playlist links. The AI cannot invent lesson URLs. The rate limit is best-effort because free Workers run in multiple isolates. The Gemini key remains only in the Worker secret store.
 
 ## Included direct learning links
 
