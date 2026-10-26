@@ -56,7 +56,7 @@ export default {
     const corsHeaders = cors(origin);
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-    if (request.method !== "POST" || url.pathname.replace(/\\/$/, "") !== "/roadmap") {
+    if (request.method !== "POST" || (url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname) !== "/roadmap") {
       return json({ error: "Use POST /roadmap from DevTrack AI." }, 405, corsHeaders);
     }
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
