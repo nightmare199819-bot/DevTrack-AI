@@ -42,9 +42,12 @@ const defaults=()=>({tasks:[{id:crypto.randomUUID(),title:'Full-stack learning â
 let data;try{data=JSON.parse(localStorage.getItem('devtrack-ai-v1'))||defaults()}catch{data=defaults()}
 function normalizeData(){if(!data.settings||typeof data.settings!=='object')data.settings=defaults().settings;if(!data.settings.classStart)data.settings.classStart='07:00';if(!data.settings.classEnd)data.settings.classEnd='20:00';if(!Array.isArray(data.settings.classDays))data.settings.classDays=[1,2,3,4,5]}
 normalizeData();
+if(!Array.isArray(data.roadmap))data.roadmap=[];if(!data.settings.aiEndpoint)data.settings.aiEndpoint='';
+let selectedDate=today(),calendarMonth=new Date(today()+'T12:00:00'),viewHistory=[],currentTab='overview';
 function save(){localStorage.setItem('devtrack-ai-v1',JSON.stringify(data));render()}
-function dayNum(){return data.leetcode.length%23+1}
-function difficulty(n){return n===11||n===22?'Medium':n===23?'Hard attempt':'Easy'}
+function isLeetCodeSolved(entry){return !!entry.verified||['solved','hints'].includes(entry.outcome)}
+function leetcodeSolvedCount(){const stats=data.settings.leetcodeProfileSnapshot?.solved||{},total=Number(stats.solvedProblem??stats.totalSolved??stats.total??0);return Math.max(total,data.leetcode.filter(isLeetCodeSolved).length)}
+function localDateFromTimestamp(value){let n=Number(value);if(!n)return '';if(n>1e12)n=Math.floor(n/1000);const d=new Date(n*1000);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function setTab(tab){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===tab));if(tab==='tasks')renderTasks();if(tab==='leetcode')renderLC();if(tab==='weekly')renderReviews()}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
 $('todayLabel').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
