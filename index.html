@@ -172,7 +172,7 @@ function setLeetCodeStatus(message,type=''){
 }
 function renderLeetCodeStatus(){
  const s=data.settings;let message='Not checked yet. DevTrack checks your public submission list when you open the site.';
- if(s.leetcodeProfileSnapshot?.syncedAt)message='Profile last synced '+new Date(s.leetcodeProfileSnapshot.syncedAt).toLocaleString()+'. Recent accepted problems are added to your cycle automatically.';
+ if(s.leetcodeProfileSnapshot?.syncedAt)message='Profile last synced '+new Date(s.leetcodeProfileSnapshot.syncedAt).toLocaleString()+'. Recent accepted problems are added to your progress history automatically.';
  else if(s.leetcodeVerifiedDate===today())message='Accepted today: '+(s.leetcodeVerifiedTitle||'submission detected')+'. Difficulty is not provided by this check.';
  else if(s.leetcodeCheckState==='error')message='Could not reach public LeetCode data. This is unverified, not proof of no submission. Retry or open your profile.';
  else if(s.leetcodeCheckState==='no-match')message='No accepted submission appeared in the latest 50 public results. This limited list is not definitive.';
@@ -217,7 +217,7 @@ async function checkLeetCode(){
   if(added)addNotice(added+' recent accepted LeetCode problem'+(added===1?'':'s')+' synced into your unlimited progress history.');
   save();
   if(added)setLeetCodeStatus('Profile synced. '+added+' recent accepted problem'+(added===1?' was':'s were')+' added to your progress history.','success');
-  else if(verifiedToday)setLeetCodeStatus('Accepted today: '+verifiedToday.title+'. Your cycle and today’s LeetCode checklist are verified.','success');
+  else if(verifiedToday)setLeetCodeStatus('Accepted today: '+verifiedToday.title+'. Your progress history and today’s LeetCode checklist are verified.','success');
   else setLeetCodeStatus(Array.isArray(accepted)?'Profile synced. No new accepted problems were found in the latest 100 public results.':'Profile totals or calendar synced; recent accepted history is temporarily unavailable.');
  }catch(err){
   data.settings.lastLeetCodeCheck=new Date().toISOString();data.settings.leetcodeCheckState='error';save();
