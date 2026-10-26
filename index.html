@@ -85,19 +85,40 @@ function renderLeetCodeProfile(){
 }
 function renderReviews(){$('reviewList').innerHTML=data.reviews.length?[...data.reviews].sort((a,b)=>b.week.localeCompare(a.week)).map(r=>'<div class="listitem"><div class="row"><b>Week of '+esc(r.week)+'</b><button class="btn" data-rdelete="'+r.id+'" style="padding:4px 8px;font-size:12px">Delete</button></div>'+[['Wins',r.wins],['Learning',r.learn],['Blockers',r.blockers],['Next priorities',r.next]].filter(x=>x[1]).map(x=>'<p class="small"><b>'+x[0]+':</b> '+esc(x[1])+'</p>').join('')+'<div class="muted small">Schedule: '+esc(r.sleep)+'</div></div>').join(''):'<div class="empty">No weekly reviews yet.</div>';document.querySelectorAll('[data-rdelete]').forEach(b=>b.onclick=()=>{if(confirm('Delete this review?')){data.reviews=data.reviews.filter(r=>r.id!==b.dataset.rdelete);save()}})}
 $('reviewForm').addEventListener('submit',e=>{e.preventDefault();let week=$('reviewWeek').value;let r={id:crypto.randomUUID(),week,wins:$('reviewWins').value.trim(),learn:$('reviewLearn').value.trim(),blockers:$('reviewBlockers').value.trim(),next:$('reviewNext').value.trim(),sleep:$('reviewSleep').value};let idx=data.reviews.findIndex(x=>x.week===week);if(idx>=0)data.reviews[idx]=r;else data.reviews.push(r);$('reviewWins').value=$('reviewLearn').value=$('reviewBlockers').value=$('reviewNext').value='';save()});
+function renderCalendar(){
+ const y=calendarMonth.getFullYear(),m=calendarMonth.getMonth(),first=new Date(y,m,1),offset=first.getDay(),days=new Date(y,m+1,0).getDate();
+ $('calendarMonthTitle').textContent=first.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+ const labels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(x=>'<div class="calendar-weekday">'+x+'</div>').join('');
+ const blanks=Array.from({length:offset},()=>'<div class="calendar-day calendar-empty"></div>').join('');
+ const dayCells=Array.from({length:days},(_,i)=>{const n=i+1,d=new Date(y,m,n),key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),tasks=data.tasks.filter(t=>t.date===key),done=tasks.filter(t=>t.status==='done').length,classes=['calendar-day',key===selectedDate?'selected':'',key===today()?'today':''].filter(Boolean).join(' ');return '<button type="button" class="'+classes+'" data-calendar-date="'+key+'" aria-label="'+d.toLocaleDateString()+', '+tasks.length+' tasks, '+done+' complete"><span class="day-number">'+n+'</span><span class="calendar-count">'+(tasks.length?done+'/'+tasks.length+' done':'')+'</span></button>'}).join('');
+ $('calendarGrid').innerHTML=labels+blanks+dayCells;
+ document.querySelectorAll('[data-calendar-date]').forEach(b=>b.onclick=()=>selectCalendarDate(b.dataset.calendarDate));
+}
+function selectCalendarDate(date,remember=true){
+ if(date===selectedDate)return;
+ if(remember)viewHistory.push({tab:currentTab,date:selectedDate});
+ selectedDate=date;calendarMonth=new Date(date+'T12:00:00');
+ if(date>=today())ensureDailySchedule(date);
+ renderOverview();updateBackButton();
+}
 function renderOverview(){
- const d=today(),tasks=data.tasks.filter(t=>t.date===d).sort((a,b)=>Number(!!b.generatedSchedule)-Number(!!a.generatedSchedule));
- const done=tasks.filter(t=>t.status==='done').length,mins=tasks.reduce((sum,t)=>sum+(Number(t.minutes)||0),0);
+ if(selectedDate>=today())ensureDailySchedule(selectedDate);
+ const d=selectedDate,tasks=data.tasks.filter(t=>t.date===d).sort((a,b)=>Number(!!b.generatedSchedule)-Number(!!a.generatedSchedule)),done=tasks.filter(t=>t.status==='done').length,mins=tasks.reduce((sum,t)=>sum+(Number(t.minutes)||0),0);
  $('metricTasks').textContent=done+'/'+tasks.length;$('taskProgress').style.width=(tasks.length?done/tasks.length*100:0)+'%';$('metricMinutes').textContent=mins;
- const solvedDates=new Set(data.leetcode.filter(x=>['solved','hints'].includes(x.outcome)).map(x=>x.date));if(data.settings.leetcodeVerifiedDate)solvedDates.add(data.settings.leetcodeVerifiedDate);
+ const solvedDates=new Set(data.leetcode.filter(x=>isLeetCodeSolved(x)&&x.date).map(x=>x.date));if(data.settings.leetcodeVerifiedDate)solvedDates.add(data.settings.leetcodeVerifiedDate);
  let streak=0,streakDate=solvedDates.has(today())?today():shiftDate(today(),-1);while(solvedDates.has(streakDate)){streak++;streakDate=shiftDate(streakDate,-1)}
  $('metricStreak').textContent=streak+' day'+(streak===1?'':'s');$('targetLabel').textContent=data.settings.dailyTarget+' min';$('sleepLabel').textContent=data.settings.sleepWindow;
- $('todayPlanNote').textContent='Generated from your class days, class hours, sleep window, and '+data.settings.dailyTarget+' minute study target. Tick items as you finish them; no daily task entry is needed.';
- $('todayTasks').innerHTML=tasks.length?tasks.slice(0,5).map(t=>'<label class="today-task '+(t.status==='done'?'done':'')+'"><input type="checkbox" data-overview-check="'+esc(t.id)+'" '+(t.status==='done'?'checked':'')+' aria-label="Mark '+esc(t.title)+' complete"><span style="flex:1"><span class="task-name">'+esc(t.title)+'</span><span class="taskmeta"><span class="pill">'+esc(t.category)+'</span>'+(t.plannedMinutes?'<span class="pill">'+t.plannedMinutes+' min planned</span>':'')+'</span></span></label>').join(''):'<div class="empty">Your timetable checklist will appear here.</div>';
+ $('todayPlanNote').textContent=d>=today()?'Generated from your class days, class hours, sleep window, and '+data.settings.dailyTarget+' minute study target. Tick each item as you finish it.':'Saved checklist and activity for this day.';
+ $('selectedDayTitle').textContent=d===today()?'Today’s command center':new Date(d+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})+' command center';$('dateBadge').textContent=new Date(d+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+ $('todayTasks').innerHTML=tasks.length?tasks.map(t=>'<label class="today-task '+(t.status==='done'?'done':'')+'"><input type="checkbox" data-overview-check="'+esc(t.id)+'" '+(t.status==='done'?'checked':'')+' aria-label="Mark '+esc(t.title)+' complete"><span style="flex:1"><span class="task-name">'+esc(t.title)+'</span><span class="taskmeta"><span class="pill">'+esc(t.category)+'</span>'+(t.plannedMinutes?'<span class="pill">'+t.plannedMinutes+' min planned</span>':'')+'</span></span></label>').join(''):'<div class="empty">'+(d<today()?'No checklist was saved for this date.':'Your timetable checklist will appear here.')+'</div>';
  document.querySelectorAll('[data-overview-check]').forEach(el=>el.onchange=()=>{const t=data.tasks.find(t=>t.id===el.dataset.overviewCheck);if(t){t.status=el.checked?'done':'todo';save()}});
+ renderCalendar();
  $('recentActivity').innerHTML=data.tasks.length?[...data.tasks].sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id)).slice(0,5).map(t=>'<div class="listitem"><div class="row"><b>'+esc(t.title)+'</b><span class="muted small">'+esc(t.date)+'</span></div><div class="muted small">'+esc(t.category)+' · '+esc(t.status)+' · '+(t.minutes||0)+' min</div></div>').join(''):'<div class="empty">Your activity will show here.</div>';renderLC();
 }
-
+$('calendarPrev').onclick=()=>{calendarMonth.setMonth(calendarMonth.getMonth()-1);renderCalendar()};
+$('calendarNext').onclick=()=>{calendarMonth.setMonth(calendarMonth.getMonth()+1);renderCalendar()};
+$('calendarToday').onclick=()=>selectCalendarDate(today());
+$('goTasks').onclick=()=>setTab('tasks');
 function clockMinutes(value){const p=String(value||'20:00').split(':').map(Number);return (p[0]||0)*60+(p[1]||0)}
 function clockLabel(value){const m=((value%1440)+1440)%1440,h=Math.floor(m/60),min=m%60;return (h%12||12)+':'+String(min).padStart(2,'0')+' '+(h<12?'AM':'PM')}
 function sleepStartMinutes(){
@@ -124,8 +145,8 @@ function scheduleTemplates(date=today()){
   {title:'Review progress and wind down',category:'Other',time:'Before '+clockLabel(sleep),minutes:0}
  ];
 }
-function ensureDailySchedule(){
- const d=today(),templates=scheduleTemplates(d);let changed=false;
+function ensureDailySchedule(d=today()){
+ const templates=scheduleTemplates(d);let changed=false;
  templates.forEach((s,i)=>{
   let task=data.tasks.find(t=>t.date===d&&t.generatedSchedule&&t.scheduleKey===String(i));
   if(!task){data.tasks.push({id:'schedule-'+d+'-'+i,title:s.title,category:s.category,status:'todo',date:d,minutes:0,plannedMinutes:s.minutes,notes:'Planned time: '+s.time,evidence:'',help:'Independently',blocker:'',generatedSchedule:true,scheduleKey:String(i),scheduleVersion:2});changed=true;return;}
