@@ -64,12 +64,12 @@ export default {
     if (isRateLimited(ip)) return json({ error: "Free connection limit reached. Try again in a minute." }, 429, corsHeaders);
     if (!env.GEMINI_API_KEY) return json({ error: "The free AI key has not been added to this Worker yet." }, 503, corsHeaders);
     const length = Number(request.headers.get("Content-Length") || 0);
-    if (length > 12000) return json({ error: "Request is too large." }, 413, corsHeaders);
+    if (length > 40000) return json({ error: "Request is too large." }, 413, corsHeaders);
 
     let input;
     try {
       const rawBody = await request.text();
-      if (new TextEncoder().encode(rawBody).length > 16000) return json({ error: "Request is too large." }, 413, corsHeaders);
+      if (new TextEncoder().encode(rawBody).length > 40000) return json({ error: "Request is too large." }, 413, corsHeaders);
       input = JSON.parse(rawBody);
     } catch { return json({ error: "Request body must be valid JSON." }, 400, corsHeaders); }
 
@@ -94,7 +94,9 @@ export default {
         "When asked for a roadmap, give an ordered, realistic plan that fits the learner's available time if supplied. Do not claim that a plan is saved or tasks are checked off.",
         "Use only free learning resources from the supplied catalogue. Select resource IDs that are genuinely useful; never invent or output URLs. A resource link is provided separately by the app.",
         "For requests outside learning, briefly explain your focus and offer a related way to help. Keep answers friendly and easy to scan.",
-        "Return JSON with exactly: answer (string) and resourceIds (array of catalogue IDs, at most 4).",
+        "Return JSON with exactly: answer (string), resourceIds (array of catalogue IDs, at most 4), and roadmap (object or null).",
+        "For a direct request to make a course plan or roadmap, set roadmap to {title,steps}. Include 4 to 10 ordered steps, each with title, summary, week, estimatedHours, and resourceIds (1 to 3 IDs). For ordinary questions set roadmap to null.",
+        "The answer should be useful and conversational; when you create a roadmap, briefly explain that the checkable plan is also saved below the chat.",
         "Resource catalogue: " + JSON.stringify(catalogue)
       ].join("\n");
 
@@ -119,8 +121,23 @@ export default {
         const resources = (Array.isArray(generated.resourceIds) ? generated.resourceIds : []).slice(0, 4)
           .map(id => byId.get(String(id))).filter(Boolean)
           .map(r => ({ title: r.title, url: r.url }));
+        let roadmap = null;
+        if (generated.roadmap && Array.isArray(generated.roadmap.steps) && generated.roadmap.steps.length >= 4) {
+          roadmap = {
+            title: String(generated.roadmap.title || "Learning roadmap").slice(0, 120),
+            steps: generated.roadmap.steps.slice(0, 10).map(step => ({
+              title: String(step.title || "Learning step").slice(0, 140),
+              summary: String(step.summary || "").slice(0, 500),
+              week: String(step.week || "").slice(0, 40),
+              estimatedHours: Math.max(0, Math.min(80, Number(step.estimatedHours) || 0)),
+              resources: (Array.isArray(step.resourceIds) ? step.resourceIds : []).slice(0, 3)
+                .map(id => byId.get(String(id))).filter(Boolean)
+                .map(r => ({ title: r.title, url: r.url }))
+            }))
+          };
+        }
         if (!answer) return json({ error: "The AI returned an empty answer. Try asking another way." }, 502, corsHeaders);
-        return json({ answer, resources }, 200, corsHeaders);
+        return json({ answer, resources, roadmap }, 200, corsHeaders);
       } catch {
         return json({ error: "The AI service is unavailable or returned an invalid reply. Try again later." }, 502, corsHeaders);
       }
