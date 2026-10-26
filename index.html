@@ -304,15 +304,21 @@ async function sendChatMessage(text){
  let url;try{url=new URL(endpoint)}catch{$('chatStatus').textContent='The saved AI Worker address is invalid. Check Settings & data.';return}
  if(url.protocol!=='https:'){$('chatStatus').textContent='The AI Worker must use a secure HTTPS address.';return}
  data.chatMessages=data.chatMessages||[];data.chatMessages.push({role:'user',content:message});localStorage.setItem('devtrack-ai-v1',JSON.stringify(data));renderChat();
- const send=$('chatSend');send.disabled=true;$('chatStatus').textContent='Thinking…';
+ const send=$('chatSend');send.disabled=true;$('newChat').disabled=true;$('chatStatus').textContent='Thinking…';
  try{
-  const response=await fetch(url.origin+url.pathname.replace(/\/$/,'')+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:data.chatMessages.slice(-14).map(m=>({role:m.role,content:String(m.content||'').slice(0,2000)}))})});
+  const context=[];let contextLength=0;
+  for(const item of [...data.chatMessages].reverse().slice(0,14)){const content=String(item.content||'').slice(0,2000);if(contextLength+content.length>10000)break;context.unshift({role:item.role==='assistant'?'assistant':'user',content});contextLength+=content.length}
+  const response=await fetch(url.origin+url.pathname.replace(/\/$/,'')+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:context})});
   const payload=await response.json();if(!response.ok)throw Error(payload.error||'The free AI service could not answer.');
   if(!payload||typeof payload.answer!=='string')throw Error('The AI connection returned an incomplete answer.');
   data.chatMessages.push({role:'assistant',content:payload.answer.slice(0,6000),resources:(Array.isArray(payload.resources)?payload.resources:[]).slice(0,6).map(r=>({title:String(r.title||'Open lesson').slice(0,120),url:String(r.url||'')}))});
-  localStorage.setItem('devtrack-ai-v1',JSON.stringify(data));renderChat();$('chatStatus').textContent='Reply saved in this browser.';
+  if(payload.roadmap&&Array.isArray(payload.roadmap.steps)){
+   data.roadmap={title:String(payload.roadmap.title||'Learning roadmap').slice(0,120),goal:message.slice(0,160),steps:payload.roadmap.steps.slice(0,10).map(step=>({title:String(step.title||'Learning step').slice(0,140),summary:String(step.summary||'').slice(0,500),week:String(step.week||'').slice(0,40),estimatedHours:Math.max(0,Math.min(80,Number(step.estimatedHours)||0)),resources:(Array.isArray(step.resources)?step.resources:[]).slice(0,3).filter(r=>{try{return new URL(r.url).protocol==='https:'}catch{return false}}).map(r=>({title:String(r.title||'Open lesson').slice(0,120),url:String(r.url)})),done:false}))};
+   $('savedRoadmapDetails').open=true;
+  }
+  localStorage.setItem('devtrack-ai-v1',JSON.stringify(data));renderChat();renderRoadmap();$('chatStatus').textContent=payload.roadmap?'Your plan is saved below. You can check off each step as you finish it.':'Reply saved in this browser.';
  }catch(error){$('chatStatus').textContent=String(error.message||'AI request failed. Check the Worker URL and free usage limit.');}
- finally{send.disabled=false;$('chatInput').focus()}
+ finally{send.disabled=false;$('newChat').disabled=false;$('chatInput').focus()}
 }
 $('chatForm').addEventListener('submit',e=>{e.preventDefault();const input=$('chatInput'),message=input.value.trim();if(!message)return;input.value='';sendChatMessage(message)});
 document.querySelectorAll('[data-chat-prompt]').forEach(button=>button.onclick=()=>{const input=$('chatInput');input.value=button.dataset.chatPrompt;input.focus()});
