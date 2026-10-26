@@ -195,18 +195,18 @@ async function checkLeetCode(){
   const snapshot=data.settings.leetcodeProfileSnapshot||{};
   if(solved)snapshot.solved=solved;
   if(calendar){let raw=calendar.submissionCalendar??calendar.calendar??calendar;if(typeof raw==='string'){try{raw=JSON.parse(raw)}catch{raw={}}}snapshot.calendar={days:raw&&typeof raw==='object'?raw:{}}}
-  snapshot.syncedAt=new Date().toISOString();data.settings.leetcodeProfileSnapshot=snapshot;
+  snapshot.syncedAt=new Date().toISOString();snapshot.revision=2;data.settings.leetcodeProfileSnapshot=snapshot;
   let added=0,verifiedToday=null;
   const incoming=Array.isArray(accepted)?accepted.filter(x=>!x.statusDisplay||x.statusDisplay==='Accepted').sort((a,b)=>Number(a.timestamp)-Number(b.timestamp)):[];
-  const toLocalDate=ts=>{const d=new Date(Number(ts)*1000);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+  const toLocalDate=localDateFromTimestamp;
   for(const sub of incoming){
    const slug=String(sub.titleSlug||'').trim(),title=String(sub.title||sub.titleSlug||'Accepted problem').trim(),date=toLocalDate(sub.timestamp||Date.now()/1000);
    if(date===today()&&!verifiedToday)verifiedToday={title,slug};
    const manual=data.leetcode.find(l=>(slug&&l.slug===slug)||(title&&String(l.problem||'').trim().toLowerCase()===title.toLowerCase()&&l.source!=='leetcode-sync'));
-   if(manual){manual.verified=true;manual.outcome='solved';manual.outcomeLabel=manual.outcomeLabel||'Accepted on LeetCode';if(!manual.slug)manual.slug=slug;continue}
-   if(data.leetcode.some(l=>l.source==='leetcode-sync'&&((slug&&l.slug===slug)||String(l.problem||'').trim().toLowerCase()===title.toLowerCase())))continue;
-   const seq=data.leetcode.length,day=seq%23+1;
-   data.leetcode.push({id:'leetcode-sync-'+(slug||seq),source:'leetcode-sync',slug,day,cycle:Math.floor(seq/23),difficulty:'Unknown · '+difficulty(day)+' target',date,problem:title,outcome:'solved',outcomeLabel:'Accepted on LeetCode',minutes:0,verified:true,timestamp:Number(sub.timestamp)||0});added++;
+   if(manual){manual.verified=true;manual.outcome='solved';manual.outcomeLabel='Accepted on LeetCode';manual.date=date;manual.timestamp=Number(sub.timestamp)||0;if(!manual.slug)manual.slug=slug;continue}
+   const prior=data.leetcode.find(l=>l.source==='leetcode-sync'&&((slug&&l.slug===slug)||String(l.problem||'').trim().toLowerCase()===title.toLowerCase()));if(prior){prior.date=date;prior.timestamp=Number(sub.timestamp)||0;prior.problem=title;if(slug)prior.slug=slug;prior.verified=true;continue}
+   const seq=data.leetcode.length;
+   data.leetcode.push({id:'leetcode-sync-'+(slug||seq),source:'leetcode-sync',slug,date,problem:title,outcome:'solved',outcomeLabel:'Accepted on LeetCode',difficulty:'Unknown',minutes:0,verified:true,timestamp:Number(sub.timestamp)||0});added++;
   }
   if(verifiedToday){
    data.settings.leetcodeVerifiedDate=today();data.settings.leetcodeVerifiedTitle=verifiedToday.title;data.settings.leetcodeVerifiedSlug=verifiedToday.slug;data.settings.leetcodeCheckState='found';
@@ -227,9 +227,10 @@ async function checkLeetCode(){
  }
 }
 function maybeAutoCheckLeetCode(){
- if(data.settings.leetcodeVerifiedDate===today())return;
+ const needsDateRefresh=Number(data.settings.leetcodeProfileSnapshot?.revision||0)<2;
+ if(data.settings.leetcodeVerifiedDate===today()&&!needsDateRefresh)return;
  const last=Date.parse(data.settings.lastLeetCodeCheck||'');
- if(!last||Date.now()-last>6*60*60*1000)checkLeetCode();
+ if(needsDateRefresh||!last||Date.now()-last>6*60*60*1000)checkLeetCode();
 }
 function currentCycleSolvedToday(){return data.leetcode.some(l=>l.date===today()&&['solved','hints'].includes(l.outcome))||data.settings.leetcodeVerifiedDate===today()}
 let reminderTimer=null;
@@ -258,11 +259,12 @@ function renderWeeklyStats(){
  $('weekBars').innerHTML=days.map((d,i)=>'<div class="week-day"><div class="week-bar-track" title="'+counts[i]+' task'+(counts[i]===1?'':'s')+' completed"><div class="week-bar '+(d===today()?'today':'')+'" style="height:'+Math.max(4,counts[i]/max*86)+'px"></div></div><span>'+new Date(d+'T12:00:00').toLocaleDateString(undefined,{weekday:'short'}).slice(0,2)+'</span></div>').join('');
  $('weekInsight').textContent=weekTasks.length?(minutes?'You completed '+done+' of '+weekTasks.length+' planned tasks and logged '+minutes+' study minutes this week.':'You completed '+done+' of '+weekTasks.length+' planned tasks. Add actual minutes to see where your study time is going.'):'Check off a task or log study time to start your weekly review.';
 }
-function render(){ensureDailySchedule();renderOverview();renderTasks();renderReviews();renderWeeklyStats();$('dailyTarget').value=data.settings.dailyTarget;$('sleepWindow').value=data.settings.sleepWindow;
+function render(){ensureDailySchedule(today());renderOverview();renderTasks();renderReviews();renderWeeklyStats();$('dailyTarget').value=data.settings.dailyTarget;$('sleepWindow').value=data.settings.sleepWindow;
  if($('courseName'))$('courseName').value=data.settings.courseName||'freeCodeCamp JavaScript';
  if($('courseDone'))$('courseDone').value=Number(data.settings.courseDone)||0;
  if($('courseTotal'))$('courseTotal').value=Number(data.settings.courseTotal)||47;
  if($('leetcodeProfile'))$('leetcodeProfile').value=data.settings.leetcodeProfile||'https://leetcode.com/u/aditya__bisht/';
+ if($('aiEndpoint'))$('aiEndpoint').value=data.settings.aiEndpoint||'';
  if($('reminderHours'))$('reminderHours').value=String(data.settings.reminderHours||5);
  if($('notificationsEnabled'))$('notificationsEnabled').checked=!!data.settings.notificationsEnabled;
  if($('classStart'))$('classStart').value=data.settings.classStart||'07:00';
@@ -272,6 +274,6 @@ function render(){ensureDailySchedule();renderOverview();renderTasks();renderRev
 }
 function exportData(){let blob=new Blob([JSON.stringify({app:'DevTrack AI',version:1,exportedAt:new Date().toISOString(),data},null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='devtrack-ai-backup-'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
 function importData(file){let r=new FileReader();r.onload=()=>{try{let o=JSON.parse(r.result),d=o.data||o;if(!Array.isArray(d.tasks)||!Array.isArray(d.leetcode)||!Array.isArray(d.reviews)||!d.settings)throw Error('Backup format not recognized');if(confirm('Replace current local data with the imported backup?')){data=d;normalizeData();save();alert('Backup imported.')}}catch(e){alert('Could not import this file: '+e.message)}};r.readAsText(file)}
-$('backBtn').onclick=goBack;$('exportBtn').onclick=$('exportBtn2').onclick=exportData;$('importBtn').onclick=$('importBtn2').onclick=()=>$('importFile').click();$('importFile').onchange=e=>{if(e.target.files[0])importData(e.target.files[0]);e.target.value=''};$('saveSettings').onclick=()=>{data.settings.dailyTarget=Math.min(240,Math.max(10,Number($('dailyTarget').value)||45));data.settings.classStart=$('classStart').value||'07:00';data.settings.classEnd=$('classEnd').value||'20:00';data.settings.classDays=Array.from(document.querySelectorAll('[data-class-day]:checked')).map(el=>Number(el.dataset.classDay));data.settings.sleepWindow=$('sleepWindow').value;data.settings.courseName=$('courseName').value.trim()||'Current course';data.settings.courseDone=Math.max(0,Number($('courseDone').value)||0);data.settings.courseTotal=Math.max(1,Number($('courseTotal').value)||47);data.settings.courseDone=Math.min(data.settings.courseDone,data.settings.courseTotal);data.settings.leetcodeProfile=$('leetcodeProfile').value.trim()||'https://leetcode.com/u/aditya__bisht/';data.settings.reminderHours=Number($('reminderHours').value)||5;data.settings.notificationsEnabled=$('notificationsEnabled').checked;addNotice('Preferences and learning progress saved.');save();setupReminders()};$('enableNotifications').onclick=async()=>{if(!('Notification'in window)){alert('This browser does not support notifications.');return;}const p=await Notification.requestPermission();if(p==='granted'){$('notificationsEnabled').checked=true;data.settings.notificationsEnabled=true;data.settings.lastReminderAt=Date.now();addNotice('Browser reminders enabled. The first reminder is due after '+(Number(data.settings.reminderHours)||5)+' hours if no LeetCode completion is detected.');save();setupReminders();alert('Browser reminders enabled while this app is open.');}else alert('Notifications were not enabled. You can still use the app checklist.');};$('checkLeetCode').onclick=checkLeetCode;$('checkLeetCodeQuick').onclick=checkLeetCode;$('syncLeetCode').onclick=checkLeetCode;$('resetBtn').onclick=()=>{if(confirm('Permanently clear all DevTrack AI data saved in this browser?')){data=defaults();save()}};$('goLC').onclick=()=>setTab('leetcode');
+$('backBtn').onclick=goBack;$('backBtn').onclick=goBack;$('exportBtn').onclick=$('exportBtn2').onclick=exportData;$('importBtn').onclick=$('importBtn2').onclick=()=>$('importFile').click();$('importFile').onchange=e=>{if(e.target.files[0])importData(e.target.files[0]);e.target.value=''};$('saveSettings').onclick=()=>{data.settings.dailyTarget=Math.min(240,Math.max(10,Number($('dailyTarget').value)||45));data.settings.classStart=$('classStart').value||'07:00';data.settings.classEnd=$('classEnd').value||'20:00';data.settings.classDays=Array.from(document.querySelectorAll('[data-class-day]:checked')).map(el=>Number(el.dataset.classDay));data.settings.sleepWindow=$('sleepWindow').value;data.settings.courseName=$('courseName').value.trim()||'Current course';data.settings.courseDone=Math.max(0,Number($('courseDone').value)||0);data.settings.courseTotal=Math.max(1,Number($('courseTotal').value)||47);data.settings.courseDone=Math.min(data.settings.courseDone,data.settings.courseTotal);data.settings.leetcodeProfile=$('leetcodeProfile').value.trim()||'https://leetcode.com/u/aditya__bisht/';data.settings.aiEndpoint=$('aiEndpoint').value.trim();data.settings.reminderHours=Number($('reminderHours').value)||5;data.settings.notificationsEnabled=$('notificationsEnabled').checked;addNotice('Preferences and learning progress saved.');save();setupReminders()};$('enableNotifications').onclick=async()=>{if(!('Notification'in window)){alert('This browser does not support notifications.');return;}const p=await Notification.requestPermission();if(p==='granted'){$('notificationsEnabled').checked=true;data.settings.notificationsEnabled=true;data.settings.lastReminderAt=Date.now();addNotice('Browser reminders enabled. The first reminder is due after '+(Number(data.settings.reminderHours)||5)+' hours if no LeetCode completion is detected.');save();setupReminders();alert('Browser reminders enabled while this app is open.');}else alert('Notifications were not enabled. You can still use the app checklist.');};$('checkLeetCode').onclick=checkLeetCode;$('checkLeetCodeQuick').onclick=checkLeetCode;$('syncLeetCode').onclick=checkLeetCode;$('resetBtn').onclick=()=>{if(confirm('Permanently clear all DevTrack AI data saved in this browser?')){data=defaults();save()}};$('goLC').onclick=()=>setTab('leetcode');
 render();setupReminders();maybeAutoCheckLeetCode();
 </script></body></html>
